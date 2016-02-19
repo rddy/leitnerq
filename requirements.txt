@@ -4,3 +4,4 @@ numpy>=1.10.4
 pandas>=0.16.2
 matplotlib>=1.4.3
 seaborn>=0.6.0
+pygraphviz>=1.3rc2

@@ -13,11 +13,11 @@ Install the notebook dependencies with
 pip install -r requirements.txt
 ```
 
+Install the `lentil` package using the instructions [here](https://github.com/rddy/lentil). 
 Install IJulia using the instructions [here](https://github.com/JuliaLang/IJulia.jl). 
-Navigate to the notebook directory and start a Jupyter server with
+Navigate to the notebook directory and start a Jupyter notebook server with
 
 ```
-cd nb
 jupyter notebook
 ```
 
@@ -27,7 +27,7 @@ of the log data collected from the Mechanical Turk experiments. `mnemosyne_data`
 exploratory analysis of the Mnemosyne log data. `mnemosyne_evaluation` is for evaluating memory
 models on the Mnemosyne log data. 
 
-To download the data and results used in the project manuscript, download [this folder](https://www.dropbox.com/sh/epx7hzezh1ok6qe/AABkUeVSJXpmCjyxyag-uaHKa?dl=0)
+To get the data and results used in the project manuscript, download [this folder](https://www.dropbox.com/sh/epx7hzezh1ok6qe/AABkUeVSJXpmCjyxyag-uaHKa?dl=0)
 and copy the `data` and `results` folders into the `nb` directory.
 
 Questions and comments
