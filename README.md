@@ -21,14 +21,8 @@ Navigate to the notebook directory and start a Jupyter notebook server with
 jupyter notebook
 ```
 
-`lqn_properties` is for analyzing the properties of the Leitner Queue Network. `lqn_simulations` 
-is for simulating the Leitner Queue Network. `mturk_experiments` is for doing exploratory analysis
-of the log data collected from the Mechanical Turk experiments. `mnemosyne_data` is for doing
-exploratory analysis of the Mnemosyne log data. `mnemosyne_evaluation` is for evaluating memory
-models on the Mnemosyne log data. 
-
-To get the data and results used in the project manuscript, download [this folder](https://www.dropbox.com/sh/epx7hzezh1ok6qe/AABkUeVSJXpmCjyxyag-uaHKa?dl=0)
-and copy the `data` and `results` folders into the `nb` directory.
+Download [this folder](https://www.dropbox.com/sh/epx7hzezh1ok6qe/AABkUeVSJXpmCjyxyag-uaHKa?dl=0)
+and copy the `data`, `results`, and `figures` folders into the `nb` directory.
 
 Questions and comments
 ----------------------

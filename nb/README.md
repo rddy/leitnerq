@@ -1,0 +1,5 @@
+ - `mnemosyne_data` is for pre-processing the Mnemosyne log data and computing basic stats
+ - `mnemosyne_evaluations` is for evaluating memory models on log data
+ - `lqn_properties` is for solving the Leitner Queue Network static planning problem
+ - `lqn_simulations` is for simulating the Leitner Queue Network
+ - `mturk_experiments` is for exploring the Mechanical Turk log data
