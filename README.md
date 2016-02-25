@@ -7,15 +7,24 @@ Read more about the model at http://siddharth.io/leitnerq.
 Usage
 -----
 
-Install the notebook dependencies with 
+Install Python dependencies with the [pip](https://pip.pypa.io/en/stable/installing/) package
+manager using
 
 ```
 pip install -r requirements.txt
 ```
 
-Install the `lentil` package using the instructions [here](https://github.com/rddy/lentil). 
-Install IJulia using the instructions [here](https://github.com/JuliaLang/IJulia.jl). 
-Navigate to the notebook directory and start a Jupyter notebook server with
+Install the `lentil` package using the instructions [here](https://github.com/rddy/lentil). Install
+[Julia](http://julialang.org/downloads/platform.html) dependencies with
+
+```
+Pkg.update()
+Pkg.add("JuMP")
+Pkg.add("Ipopt")
+Pkg.add("Gadfly")
+```
+
+Navigate to the `nb` directory and start a Jupyter notebook server with
 
 ```
 jupyter notebook
