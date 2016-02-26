@@ -26,7 +26,7 @@ from lentil import models
 
 class EFCModel(models.SkillModel):
     """
-    Class for memory models that follow the exponential forgetting curve
+    Class for memory models that predict recall likelihood using the exponential forgetting curve
     """
 
     def __init__(self, history, strength_model=None, using_delay=True, 
@@ -34,12 +34,11 @@ class EFCModel(models.SkillModel):
         """
         Initialize memory model object
 
-        :param pd.DataFrame history: Interaction log data. Must contain the following columns.
-
-                tlast
-                timestamp
-                module_id
-                outcome
+        :param pd.DataFrame history: Interaction log data. Must contain the 'tlast' column,
+            in addition to the other columns that belong to the dataframe in a
+            lentil.datatools.InteractionHistory object. If strength_model is not None, then
+            the history should also contain a column named by the strength_model (e.g., 'nreps' or
+            'deck')
 
         :param str|None strength_model: Corresponds to a column in the history dataframe 
             (e.g., 'nreps' or 'deck') or simply None if memory strength is always 1.
@@ -128,19 +127,27 @@ class EFCModel(models.SkillModel):
 
         losses = []
         for _ in xrange(max_iter):
-            d_difficulty = gradient_fun(difficulty) # evaluate gradient at current difficulty value
-            difficulty -= d_difficulty * learning_rate # gradient descent update
+            difficulty -= gradient_fun(difficulty) * learning_rate # gradient descent update
             losses.append(loss(difficulty)) # evaluate loss function at current difficulty value
             if len(losses) > 1 and (losses[-2] - losses[-1]) / losses[-2] < ftol: # stopping cond.
                 break
 
-        if self.debug_mode_on: # visual check for convergence
+        self.difficulty = np.exp(-difficulty) # second part of non-negativity trick
+        
+        if self.debug_mode_on: 
+            # visual check for convergence
             plt.xlabel('Iteration')
             plt.ylabel('Average negative log-likelihood')
             plt.plot(losses)
             plt.show()
 
-        self.difficulty = np.exp(-difficulty) # second part of non-negativity trick
+            if not self.using_global_difficulty:
+                # check distribution of learned difficulties
+                plt.xlabel(r'Item Difficulty $\theta_i$')
+                plt.ylabel('Frequency (Number of Items)')
+                plt.hist(self.difficulty)
+                plt.show()
+
 
     def assessment_pass_likelihoods(self, df):
         """
@@ -157,65 +164,113 @@ class EFCModel(models.SkillModel):
 
 class LogisticRegressionModel(models.SkillModel):
     """
-    Class for memory model that predicts recall using basic statistics 
+    Class for a memory model that predicts recall likelihood using basic statistics 
     of previous review intervals and outcomes for a user-item pair
     """
 
-    def __init__(self, history, C=1.0, name_of_user_id='user_id'):
+    def __init__(self, history, name_of_user_id='user_id'):
         """
         Initialize memory model object
 
-        :param pd.DataFrame history: Interaction log data
-        :param float C: Regularization constant
-        :param str name_of_user_id:
+        :param pd.DataFrame history: Interaction log data. Must contain the 'tlast' column,
+            in addition to the other columns that belong to the dataframe in a
+            lentil.datatools.InteractionHistory object. If strength_model is not None, then
+            the history should also contain a column named by the strength_model (e.g., 'nreps' or
+            'deck'). Rows should be sorted in increasing order of timestamp.
+
+        :param str name_of_user_id: Name of column in history that stores user IDs (useful for
+            distinguishing between user IDs and user-item pair IDs)
         """
 
         self.history = history[history['module_type']==datatools.AssessmentInteraction.MODULETYPE]
-        self.C = C
         self.name_of_user_id = name_of_user_id
+
         self.clf = None
         self.data = None
 
-    def feature_vec(self, x, max_t=sys.maxint):
-        intervals, outcomes, ts = x
+    def extract_features(self, review_history, max_time=None):
+        """
+        Map a sequence of review intervals and outcomes to a fixed-length feature set
 
-        i = 0
-        while i<len(ts) and ts[i] < max_t:
-            i += 1
-        outcomes = outcomes[:i]
-        intervals = intervals[:max(0, i-1)]
+        :param (np.array,np.array,np.array) review_history: A tuple of 
+            (intervals, outcomes, timestamps) where intervals are the milliseconds elapsed between 
+            consecutive reviews, outcomes are binary and timestamps are unix epochs. Note that 
+            there is one fewer element in the intervals array than in the outcomes and timestamps.
 
-        if len(intervals)==0:
-            return [0] * 16
+        :param int max_time: Intervals that occur after this time should not be used to 
+            construct the feature set. Outcomes that occur at or after this time should not be
+            used in the feature set either.
 
-        intervals = np.log(np.array(intervals)+1)
-        interval_fvec = [len(intervals), intervals[0], intervals[-1], 
-                np.mean(intervals), min(intervals), max(intervals), 
-                max(intervals)-min(intervals), sorted(intervals)[len(intervals) // 2]]
-        outcome_fvec = [len(outcomes), outcomes[0], outcomes[-1], 
-                np.mean(outcomes), min(outcomes), max(outcomes), 
-                max(outcomes)-min(outcomes), sorted(outcomes)[len(outcomes) // 2]]
-        return np.array(interval_fvec + outcome_fvec)
+        :rtype: np.array
+        :return: A feature vector for the review history containing the length, first, last,
+            mean, min, max, range, and median (in that order) of the log-intervals, concatenated 
+            with the length, first, last, mean, min, max, range, and median (in that order) of the 
+            outcomes.
+        """
 
-    def fit(self):
+        intervals, outcomes, timestamps = review_history
+
+        if max_time is not None:
+            # truncate the sequences 
+            i = 1
+            while i < len(timestamps) and timestamps[i] <= max_time:
+                i += 1
+            outcomes = outcomes[:i-1]
+            intervals = intervals[:i-1]
+
+        if len(intervals) == 0:
+            interval_feature_list = [0] * 8
+        else:
+            intervals = np.log(np.array(intervals)+1)
+            interval_feature_list = [len(intervals), intervals[0], intervals[-1], \
+                    np.mean(intervals), min(intervals), max(intervals), \
+                    max(intervals)-min(intervals), sorted(intervals)[len(intervals) // 2]]
+
+        if len(outcomes) == 0:
+            outcome_feature_list = [0] * 8
+        else:
+            outcome_feature_list = [len(outcomes), outcomes[0], outcomes[-1], \
+                    np.mean(outcomes), min(outcomes), max(outcomes), \
+                    max(outcomes)-min(outcomes), sorted(outcomes)[len(outcomes) // 2]]
+
+        return np.array(interval_feature_list + outcome_feature_list)
+
+    def fit(self, C=1.0):
+        """
+        Estimate the coefficients of a logistic regression model with a bias term and an L2 penalty
+        
+        :param float C: Regularization constant. Inverse of regularization strength.
+        """
+        
         self.data = {}
-        for umid, g in self.history.groupby([self.name_of_user_id, 'module_id']):
-            ts = g['timestamp'].values
-            intervals = [y-x for x, y in zip(ts[:-1], ts[1:])]
-            outcomes = [1 if x else 0 for x in g['outcome']]
-            self.data[umid] = (intervals, outcomes, ts)
+        for user_item_pair_id, group in self.history.groupby([self.name_of_user_id, 'module_id']):
+            if len(group) <= 1:
+                continue
+            timestamps = np.array(group['timestamp'].values)
+            intervals = timestamps[1:] - timestamps[:-1]
+            outcomes = np.array(group['outcome'].apply(lambda x: 1 if x else 0).values)
+            self.data[user_item_pair_id] = (intervals, outcomes, timestamps)
 
-        X_train = np.array([self.feature_vec((intervals[:i+1], outcomes[:i+1], ts[:i+1])) \
-                for intervals, outcomes, ts in self.data.itervalues() \
+        X_train = np.array([self.extract_features(
+            (intervals[:i+1], outcomes[:i+1], timestamps[:i+1])) \
+                for intervals, outcomes, timestamps in self.data.itervalues() \
                 for i in xrange(len(intervals))])
-        Y_train = np.array([x for intervals, outcomes, ts in self.data.itervalues() \
+        Y_train = np.array([x for intervals, outcomes, timestamps in self.data.itervalues() \
                 for x in outcomes[1:]])
 
-        self.clf = LogisticRegression(C=self.C)
+        self.clf = LogisticRegression(C=C)
         self.clf.fit(X_train, Y_train)
 
     def assessment_pass_likelihoods(self, df):
-        X_val = np.array([self.feature_vec(self.data[(x[self.name_of_user_id], 
-            x['module_id'])], max_t=x['timestamp']) for _, x in df.iterrows()])
-        return self.clf.predict_proba(X_val)[:,1]
+        """
+        Compute recall likelihoods given the learned coefficients
+
+        :param pd.DataFrame df: Interaction log data
+        :rtype: np.array
+        :return: An array of recall likelihoods
+        """
+        
+        X = np.array([self.extract_features(self.data[(x[self.name_of_user_id], 
+            x['module_id'])], max_time=x['timestamp']) for _, x in df.iterrows()])
+        return self.clf.predict_proba(X)[:,1]
 
