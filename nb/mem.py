@@ -148,7 +148,6 @@ class EFCModel(models.SkillModel):
                 plt.hist(self.difficulty)
                 plt.show()
 
-
     def assessment_pass_likelihoods(self, df):
         """
         Compute recall likelihoods given the learned item difficulty
