@@ -5,7 +5,6 @@ Module for Leitner Queue Network schedulers
 
 from __future__ import division
 
-from collections import OrderedDict
 import random
 import time
 import copy
@@ -183,21 +182,4 @@ class StatefulLQNScheduler(object):
             self.items_of_deck[new_deck].add(item)
 
         self.latest_timestamp_of_item[item] = timestamp
-
-
-def sample_arrival_times(all_items, arrival_rate, start_time):
-    """
-    Sample item arrival times for init_data['arrival_time_of_item'],
-    which gets passed to the StatelessLQNScheduler constructor
-
-    :param set[str] all_items: A set of item ids
-    :param float arrival_rate: The arrival rate for the Poisson process
-    :param int start_time: Start time (unix epoch) for the arrival process
-    """
-
-    all_items = list(all_items)
-    random.shuffle(all_items)
-    inter_arrival_times = np.random.exponential(1 / arrival_rate, len(all_items))
-    arrival_times = start_time + np.cumsum(inter_arrival_times, axis=0).astype(int)
-    return OrderedDict(zip(all_items, arrival_times))
 
