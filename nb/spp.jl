@@ -16,14 +16,14 @@ function allocate_work_rates(num_decks, work_rate_budget, difficulty)
     for i = 1:num_decks
         @addConstraint(m, l[i] <= u[i])
     end
-    @addNLConstraint(m, l[1] == a + (1 - exp(difficulty / (l[1] - u[1] - eps))) * l[1] + 
-            (1 - exp(difficulty / ((l[2] - u[2] - eps) * 2))) * l[2])
+    @addNLConstraint(m, l[1] == a + (1 - (u[1] - l[1]) / (u[1] - l[1] + difficulty)) * l[1] + 
+            (1 - (u[2] - l[2]) / (u[2] - l[2] + difficulty / 2)) * l[2])
     for i = 2:num_decks-1
-        @addNLConstraint(m, l[i] == exp(difficulty / ((l[i-1] - u[i-1] - eps) * (i-1))) * l[i-1] + 
-                (1 - exp(difficulty / ((l[i+1] - u[i+1] - eps) * (i+1)))) * l[i+1])
+        @addNLConstraint(m, l[i] == (u[i-1] - l[i-1]) / (u[i-1] - l[i-1] + difficulty / (i-1)) * 
+                l[i-1] + (1 - (u[i+1] - l[i+1]) / (u[i+1] - l[i+1] + difficulty / (i+1))) * l[i+1])
     end
-    @addNLConstraint(m, l[num_decks] == exp(difficulty / 
-                ((l[num_decks-1] - u[num_decks-1] - eps) * (num_decks-1))) * l[num_decks-1])
+    @addNLConstraint(m, l[num_decks] == (u[num_decks-1] - l[num_decks-1]) /
+            (u[num_decks-1] - l[num_decks-1] + difficulty / (num_decks-1)) * l[num_decks-1])
     @setNLObjective(m, Max, a)
     TT = STDOUT
     redirect_stdout()
@@ -40,14 +40,14 @@ function throughput_for_work_rates(num_decks, u, difficulty)
     for i = 1:num_decks
         @addConstraint(m, l[i] <= u[i])
     end
-    @addNLConstraint(m, l[1] == a + (1 - exp(difficulty / (l[1] - u[1] - eps))) * l[1] + 
-            (1 - exp(difficulty / ((l[2] - u[2] - eps) * 2))) * l[2])
+    @addNLConstraint(m, l[1] == a + (1 - (u[1] - l[1]) / (u[1] - l[1] + difficulty)) * l[1] + 
+            (1 - (u[2] - l[2]) / (u[2] - l[2] + difficulty / 2)) * l[2])
     for i = 2:num_decks-1
-        @addNLConstraint(m, l[i] == exp(difficulty / ((l[i-1] - u[i-1] - eps) * (i-1))) * l[i-1] + 
-                (1 - exp(difficulty / ((l[i+1] - u[i+1] - eps) * (i+1)))) * l[i+1])
+        @addNLConstraint(m, l[i] == (u[i-1] - l[i-1]) / (u[i-1] - l[i-1] + difficulty / (i-1)) * 
+                l[i-1] + (1 - (u[i+1] - l[i+1]) / (u[i+1] - l[i+1] + difficulty / (i+1))) * l[i+1])
     end
-    @addNLConstraint(m, l[num_decks] == exp(difficulty / 
-                ((l[num_decks-1] - u[num_decks-1] - eps) * (num_decks-1))) * l[num_decks-1])
+    @addNLConstraint(m, l[num_decks] == (u[num_decks-1] - l[num_decks-1]) /
+            (u[num_decks-1] - l[num_decks-1] + difficulty / (num_decks-1)) * l[num_decks-1])
     @setNLObjective(m, Max, a)
     TT = STDOUT
     redirect_stdout()
@@ -63,14 +63,14 @@ function eq_flow_rates_for_work_rates_and_arrival_rate(num_decks, u, difficulty,
     for i = 1:num_decks
         @addConstraint(m, l[i] <= u[i])
     end
-    @addNLConstraint(m, l[1] == a + (1 - exp(difficulty / (l[1] - u[1] - eps))) * l[1] + 
-            (1 - exp(difficulty / ((l[2] - u[2] - eps) * 2))) * l[2])
+    @addNLConstraint(m, l[1] == a + (1 - (u[1] - l[1]) / (u[1] - l[1] + difficulty)) * l[1] + 
+            (1 - (u[2] - l[2]) / (u[2] - l[2] + difficulty / 2)) * l[2])
     for i = 2:num_decks-1
-        @addNLConstraint(m, l[i] == exp(difficulty / ((l[i-1] - u[i-1] - eps) * (i-1))) * l[i-1] + 
-                (1 - exp(difficulty / ((l[i+1] - u[i+1] - eps) * (i+1)))) * l[i+1])
+        @addNLConstraint(m, l[i] == (u[i-1] - l[i-1]) / (u[i-1] - l[i-1] + difficulty / (i-1)) * 
+                l[i-1] + (1 - (u[i+1] - l[i+1]) / (u[i+1] - l[i+1] + difficulty / (i+1))) * l[i+1])
     end
-    @addNLConstraint(m, l[num_decks] == exp(difficulty / 
-                ((l[num_decks-1] - u[num_decks-1] - eps) * (num_decks-1))) * l[num_decks-1])
+    @addNLConstraint(m, l[num_decks] == (u[num_decks-1] - l[num_decks-1]) /
+            (u[num_decks-1] - l[num_decks-1] + difficulty / (num_decks-1)) * l[num_decks-1])
     @setNLObjective(m, Max, l[num_decks])
     TT = STDOUT
     redirect_stdout()
