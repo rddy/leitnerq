@@ -23,7 +23,8 @@ Pkg.add("JuMP")
 Pkg.add("Gadfly")
 ```
 
-Navigate to the `nb` directory and start a Jupyter notebook server with
+To ensure that all plotting functions work, install [latex](https://www.latex-project.org/). Navigate to 
+the `nb` directory and start a Jupyter notebook server with
 
 ```
 jupyter notebook
