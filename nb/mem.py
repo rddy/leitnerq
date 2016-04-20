@@ -7,6 +7,7 @@ from __future__ import division
 
 import sys
 
+from sklearn import preprocessing
 from sklearn.linear_model import LogisticRegression
 import numpy as np
 
@@ -29,8 +30,8 @@ class EFCModel(models.SkillModel):
     Class for memory models that predict recall likelihood using the exponential forgetting curve
     """
 
-    def __init__(self, history, strength_model=None, using_delay=True, 
-            using_global_difficulty=True, debug_mode_on=False):
+    def __init__(self, history, strength_model=None, content_features=None, using_delay=True, 
+            using_global_difficulty=True, using_item_bias=True, debug_mode_on=False):
         """
         Initialize memory model object
 
@@ -43,55 +44,84 @@ class EFCModel(models.SkillModel):
         :param str|None strength_model: Corresponds to a column in the history dataframe 
             (e.g., 'nreps' or 'deck') or simply None if memory strength is always 1.
 
+        :param dict[str,np.array]|None content_features: A dictionary mapping item names
+            to feature vectors. All items should be accounted for.
+
         :param bool using_delay: True if the delay term is included in the recall probability, 
             False otherwise.
 
-        :param bool using_global_difficulty: True if item difficulty is a global constant, 
-            False if difficulty is an item-specific parameter.
+        :param bool using_global_difficulty: True if the global bias term should be included in
+            the log-linear difficulty model, False otherwise.
 
-        :param bool debug_mode_on: True if maximum-likelihood estimation should log progress 
+        :param bool using_item_bias: True if the item-specific bias term should be included in
+            the log-linear difficulty model, False otherwise.
+
+        :param bool debug_mode_on: True if MAP estimation should log progress 
             and plot learned difficulty parameters, False otherwise.
         """
 
         self.history = history[history['module_type']==datatools.AssessmentInteraction.MODULETYPE]
         self.strength_model = strength_model
+       
         self.using_delay = using_delay
         self.using_global_difficulty = using_global_difficulty
+        self.using_item_bias = using_item_bias
         self.debug_mode_on = debug_mode_on
 
         self.idx_of_module_id = {x: i for i, x in enumerate(self.history['module_id'].unique())}
         self.difficulty = None
+        
+        if content_features is None:
+            if self.using_global_difficulty:
+                content_features = np.ones((len(self.idx_of_module_id), 1))
+        else:    
+            content_features = np.array([content_features[module_id] \
+                    for module_id in self.history['module_id'].unique()])
+            content_features = preprocessing.scale(content_features)
+            if self.using_global_difficulty:
+                content_features = preprocessing.add_dummy_feature(content_features)
+        self.content_features = content_features
 
-    def extract_features(self, df):
+        if self.content_features is None and not self.using_item_bias:
+            raise ValueError('The log-linear difficulty model has not been defined!')
+
+    def extract_examples(self, df, filter_first_ixns=True):
         """
-        Get delays, memory strengths, and module indices for a set of interactions
+        Get delays, memory strengths, module indices, and outcomes for a set of interactions
 
         :param pd.DataFrame df: Interaction log data
-        :rtype: (np.array,np.array,np.array)
-        :return: A tuple of (delays, memory strengths, module indices)
-        """
+        :param bool filter_first_ixns: True if the first interaction in a user-item history should
+            be removed, False otherwise. These interactions are marked by tlast = np.nan.
 
+        :rtype: (np.array,np.array,np.array,np.array)
+        :return: A tuple of (delays, memory strengths, module indices, outcomes)
+        """
+    
         if self.using_delay:
+            if filter_first_ixns:
+                df = df[~np.isnan(df['tlast'])]
             timestamps = np.array(df['timestamp'].values)
             previous_review_timestamps = np.array(df['tlast'].values)
             delays = 1 + (timestamps - previous_review_timestamps) / 86400
         else:
             delays = 1
+       
         strengths = 1 if self.strength_model is None else np.array(df[self.strength_model].values)
-        module_idxes = 0 if self.using_global_difficulty else np.array(
-                df['module_id'].map(self.idx_of_module_id).values)
+        module_idxes = np.array(df['module_id'].map(self.idx_of_module_id).values)
+        outcomes = np.array(df['outcome'].apply(lambda x: 1 if x else 0).values)
+        
+        return delays, strengths, module_idxes, outcomes
 
-        return delays, strengths, module_idxes
-
-    def fit(self, learning_rate=0.5, ftol=1e-6, max_iter=1000):
+    def fit(self, learning_rate=0.5, ftol=1e-6, max_iter=1000,
+            coeffs_regularization_constant=1e-3, item_bias_regularization_constant=1e-3):
         """
-        Learn item difficulty parameter(s) using maximum-likelihood estimation
+        Learn model hyperparameters using MAP estimation
 
         Uses batch gradient descent with a fixed learning rate and a fixed threshold on 
             the relative difference between consecutive loss function evaluations 
             as the stopping condition
 
-        Uses the exponentiation trick to enforce the non-negativity constraint on item difficulty
+        Uses the log-linear item difficulty model
 
         :param float learning_rate: Fixed learning rate for batch gradient descent
         :param float ftol: If the relative difference between consecutive loss function 
@@ -99,54 +129,135 @@ class EFCModel(models.SkillModel):
 
         :param int max_iter: If the stopping condition hasn't been met after this many iterations, 
             then stop gradient descent
+
+        :param float coeffs_regularization_constant: Coefficient of L2 penalty on coefficients
+            in log-linear difficulty model
+
+        :param float item_bias_regularization_constant: Coefficient of L2 penalty on item bias
+            term in log-linear difficulty model
         """
 
-        delays, strengths, module_idxes = self.extract_features(self.history)
-        outcomes = np.array(self.history['outcome'].apply(lambda x: 1 if x else 0).values)
+        delays, strengths, module_idxes, outcomes = self.extract_examples(self.history)
 
         eps = 1e-9 # smoothing parameter for likelihoods
-        def loss(difficulty):
-            """
-            Compute the average negative log-likelihood of the data given the item difficulty
+        if self.content_features is not None:
+            if self.using_item_bias:
+                def loss((coeffs, item_biases)):
+                    """
+                    Compute the average negative log-likelihood and regularization penalty 
+                    given the data and hyperparameter values
 
-            :param np.array difficulty: A global item difficulty, 
-                or an array of item-specific difficulties
+                    :param np.array coeffs: Coefficients of log-linear difficulty model
+                    :param float item_bias: Item bias term in log-linear difficulty model
 
-            :rtype: float
-            :return: Average negative log-likelihood
-            """
+                    :rtype: float
+                    :return: Value of loss function evaluated at current parameter values
+                    """
 
-            pass_likelihoods = np.exp(-np.exp(-difficulty[module_idxes])*delays/strengths)
-            return -np.mean(outcomes*np.log(pass_likelihoods+eps) + (1-outcomes)*np.log(
-                1-pass_likelihoods+eps))
+                    difficulties = np.exp(-(np.einsum(
+                        'i, ji -> j', coeffs, self.content_features[module_idxes, :]) \
+                                + item_biases[module_idxes]))
+                    pass_likelihoods = np.exp(-difficulties*delays/strengths)
+                    log_likelihoods = outcomes*np.log(pass_likelihoods+eps) \
+                            + (1-outcomes)*np.log(1-pass_likelihoods+eps)
+                    regularizer = coeffs_regularization_constant * np.linalg.norm(coeffs)**2 \
+                            + item_bias_regularization_constant * np.linalg.norm(item_biases)**2
+                    return -np.mean(log_likelihoods) + regularizer
+            else:
+                def loss(coeffs):
+                    """
+                    Compute the average negative log-likelihood and regularization penalty 
+                    given the data and hyperparameter values
 
-        gradient_fun = grad(loss) # differentiate the loss function
+                    :param np.array coeffs: Coefficients of log-linear difficulty model
+                    :param float item_bias: Item bias term in log-linear difficulty model
 
-        difficulty = np.random.random(1 if self.using_global_difficulty else len(
-            self.idx_of_module_id))
+                    :rtype: float
+                    :return: Value of loss function evaluated at current parameter values
+                    """
 
+                    difficulties = np.exp(-np.einsum(
+                        'i, ji -> j', coeffs, self.content_features[module_idxes, :]))
+                    pass_likelihoods = np.exp(-difficulties*delays/strengths)
+                    log_likelihoods = outcomes*np.log(pass_likelihoods+eps) \
+                            + (1-outcomes)*np.log(1-pass_likelihoods+eps)
+                    regularizer = coeffs_regularization_constant * np.linalg.norm(coeffs)**2
+                    return -np.mean(log_likelihoods) + regularizer
+        else:
+            def loss(item_biases):
+                """
+                Compute the average negative log-likelihood and regularization penalty 
+                given the data and hyperparameter values
+
+                :param float item_bias: Item bias term in log-linear difficulty model
+
+                :rtype: float
+                :return: Value of loss function evaluated at current parameter values
+                """
+
+                difficulties = np.exp(-item_biases[module_idxes])
+                pass_likelihoods = np.exp(-difficulties*delays/strengths)
+                log_likelihoods = outcomes*np.log(pass_likelihoods+eps) \
+                        + (1-outcomes)*np.log(1-pass_likelihoods+eps)
+                regularizer = item_bias_regularization_constant * np.linalg.norm(item_biases)**2
+                return -np.mean(log_likelihoods) + regularizer
+
+        gradient_fun = grad(loss) # take the gradient of the loss function
+
+        if self.content_features is not None:
+            coeffs = np.random.random(self.content_features.shape[1])
+        else:
+            coeffs = 0
+
+        if self.using_item_bias:
+            item_biases = np.random.random(len(self.idx_of_module_id))
+        else:
+            item_biases = 0
+        
         losses = []
         for _ in xrange(max_iter):
-            difficulty -= gradient_fun(difficulty) * learning_rate # gradient descent update
-            losses.append(loss(difficulty)) # evaluate loss function at current difficulty value
-            if len(losses) > 1 and (losses[-2] - losses[-1]) / losses[-2] < ftol: # stopping cond.
+            # perform gradient descent update
+            if self.content_features is not None:
+                if self.using_item_bias:
+                    grad_coeffs, grad_item_biases = gradient_fun((coeffs, item_biases))
+                    item_biases -= grad_item_biases * learning_rate
+                else:
+                    grad_coeffs = gradient_fun(coeffs)
+                coeffs -= grad_coeffs * learning_rate
+            else:
+                grad_item_biases = gradient_fun(item_biases)
+                item_biases -= grad_item_biases * learning_rate
+            
+            # evaluate loss function at current difficulty value
+            if self.content_features is not None:
+                if self.using_item_bias:
+                    loss_params = (coeffs, item_biases)
+                else:
+                    loss_params = coeffs
+            else:
+                loss_params = item_biases
+            losses.append(loss(loss_params))
+            
+            # evaluate stopping condition
+            if len(losses) > 1 and (losses[-2] - losses[-1]) / losses[-2] < ftol:
                 break
 
-        self.difficulty = np.exp(-difficulty) # second part of non-negativity trick
-        
+        self.difficulty = np.exp(-((np.einsum(
+            'i, ji -> j', coeffs, self.content_features) \
+                    if self.content_features is not None else 0) + item_biases))
+
         if self.debug_mode_on: 
             # visual check for convergence
             plt.xlabel('Iteration')
-            plt.ylabel('Average negative log-likelihood')
+            plt.ylabel('Average negative log-likelihood + regularizer')
             plt.plot(losses)
             plt.show()
 
-            if not self.using_global_difficulty:
-                # check distribution of learned difficulties
-                plt.xlabel(r'Item Difficulty $\theta_i$')
-                plt.ylabel('Frequency (Number of Items)')
-                plt.hist(self.difficulty)
-                plt.show()
+            # check distribution of learned difficulties
+            plt.xlabel(r'Item Difficulty $\theta_i$')
+            plt.ylabel('Frequency (Number of Items)')
+            plt.hist(self.difficulty)
+            plt.show()
 
     def assessment_pass_likelihoods(self, df):
         """
@@ -157,7 +268,7 @@ class EFCModel(models.SkillModel):
         :return: An array of recall likelihoods
         """
 
-        delays, strengths, module_idxes = self.extract_features(df)
+        delays, strengths, module_idxes, _ = self.extract_examples(df, filter_first_ixns=False)
         return np.exp(-self.difficulty[module_idxes]*delays/strengths)
 
 
