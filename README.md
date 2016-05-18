@@ -1,7 +1,7 @@
 Leitner Queue Network
 =====================
 
-A collection of Jupyter notebooks for analyzing and simulating the Leitner Queue Network. 
+A collection of Jupyter notebooks for analyzing and simulating the Leitner Queue Network.
 Read more about the model at http://siddharth.io/leitnerq.
 
 Usage
@@ -23,7 +23,7 @@ Pkg.add("JuMP")
 Pkg.add("Gadfly")
 ```
 
-To ensure that all plotting functions work, install [latex](https://www.latex-project.org/). Navigate to 
+To ensure that all plotting functions work, install [latex](https://www.latex-project.org/). Navigate to
 the `nb` directory and start a Jupyter notebook server with
 
 ```
@@ -37,3 +37,17 @@ Questions and comments
 ----------------------
 
 Please contact the author at `sgr45 [at] cornell [dot] edu` if you have questions or find bugs.
+
+Citation
+--------
+If you find this software useful in your work, we kindly request that you cite the following [paper](http://arxiv.org/abs/1602.07032):
+
+```
+@InProceedings{Reddy/etal/16d,
+  title={Unbounded Human Learning: Optimal Scheduling for Spaced Repetition},
+  author={Reddy, Siddharth and Labutov, Igor and Banerjee, Siddhartha and Joachims, Thorsten},
+  booktitle={Arxiv 1602.07032},
+  year={2016},
+  url={http://arxiv.org/abs/1602.07032}
+}
+```
