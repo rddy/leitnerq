@@ -19,7 +19,9 @@ Install the `lentil` package using the instructions [here](https://github.com/rd
 
 ```
 Pkg.update()
+Pkg.add("IJulia")
 Pkg.add("JuMP")
+Pkg.add("Ipopt")
 Pkg.add("Gadfly")
 ```
 
