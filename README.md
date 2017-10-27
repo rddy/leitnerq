@@ -23,6 +23,8 @@ Pkg.add("IJulia")
 Pkg.add("JuMP")
 Pkg.add("Ipopt")
 Pkg.add("Gadfly")
+Pkg.add("Fontconfig")
+Pkg.add("Cairo")
 ```
 
 To ensure that all plotting functions work, install [latex](https://www.latex-project.org/). Navigate to
