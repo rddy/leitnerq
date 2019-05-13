@@ -9,7 +9,7 @@ using Ipopt
 eps = 1e-9
 
 function allocate_work_rates(num_decks, work_rate_budget, difficulty)
-    m = Model(solver=IpoptSolver()) # Uses IP-OPT solver by default
+    m = Model(with_optimizer(Ipopt.Optimizer)) # Uses IP-OPT solver by default
     @variable(m, u[1:num_decks] >= 0)
     @variable(m, a >= 0)
     @variable(m, l[1:num_decks] >= 0)
@@ -26,16 +26,17 @@ function allocate_work_rates(num_decks, work_rate_budget, difficulty)
     @NLconstraint(m, l[num_decks] == (u[num_decks-1] - l[num_decks-1]) /
             (u[num_decks-1] - l[num_decks-1] + difficulty / (num_decks-1)) * l[num_decks-1])
     @NLobjective(m, Max, a)
-    TT = STDOUT
+    TT = stdout
     redirect_stdout()
-    status = solve(m)
+    optimize!(m)
+    status = termination_status(m)
     redirect_stdout(TT)
-    return getobjectivevalue(m), getvalue(u), getvalue(l)
+    return objective_value(m), value.(u), value.(l)
 end
 
 # Assuming fixed work rates, what is the corresponding equilibrium?
 function throughput_for_work_rates(num_decks, u, difficulty)
-    m = Model(solver=IpoptSolver())
+    m = Model(with_optimizer(Ipopt.Optimizer))
     @variable(m, a >= 0)
     @variable(m, l[1:num_decks] >= 0)
     for i = 1:num_decks
@@ -50,16 +51,17 @@ function throughput_for_work_rates(num_decks, u, difficulty)
     @NLconstraint(m, l[num_decks] == (u[num_decks-1] - l[num_decks-1]) /
             (u[num_decks-1] - l[num_decks-1] + difficulty / (num_decks-1)) * l[num_decks-1])
     @NLobjective(m, Max, a)
-    TT = STDOUT
+    TT = stdout
     redirect_stdout()
-    status = solve(m)
+    optimize!(m)
+    status = termination_status(m)
     redirect_stdout(TT)
-    return getobjectivevalue(m)
+    return objective_value(m)
 end
 
 # Assuming fixed work rates and arrival rate, what is the corresponding equilibrium?
 function eq_flow_rates_for_work_rates_and_arrival_rate(num_decks, u, difficulty, a)
-    m = Model(solver=IpoptSolver())
+    m = Model(with_optimizer(Ipopt.Optimizer))
     @variable(m, l[1:num_decks] >= 0)
     for i = 1:num_decks
         @constraint(m, l[i] <= u[i])
@@ -73,11 +75,12 @@ function eq_flow_rates_for_work_rates_and_arrival_rate(num_decks, u, difficulty,
     @NLconstraint(m, l[num_decks] == (u[num_decks-1] - l[num_decks-1]) /
             (u[num_decks-1] - l[num_decks-1] + difficulty / (num_decks-1)) * l[num_decks-1])
     @NLobjective(m, Max, l[num_decks])
-    TT = STDOUT
+    TT = stdout
     redirect_stdout()
-    status = solve(m)
+    optimize!(m)
+    status = termination_status(m)
     redirect_stdout(TT)
-    return getobjectivevalue(m), getvalue(l)
+    return objective_value(m), value.(l)
 end
 
 # Use a heuristic to generate a work rate allocation that satisfies a budget
