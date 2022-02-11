@@ -2,7 +2,7 @@ Leitner Queue Network
 =====================
 
 A collection of Jupyter notebooks for analyzing and simulating the Leitner Queue Network.
-Read more about the model at https://people.eecs.berkeley.edu/~reddy/leitnerq
+Read more about the model at https://siddharth.io/leitnerq
 
 Usage
 -----
